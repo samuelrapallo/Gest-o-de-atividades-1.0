@@ -17,134 +17,80 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
 
   useEffect(() => {
     if (!isOpen) return;
-
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'pt-BR';
-
       recognition.onresult = (event: any) => {
-        if (!event || !event.results) return;
-        
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const result = event.results[i];
-          if (result && result.isFinal) {
-            finalTranscript += result[0].transcript;
-          }
+          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
         }
-        if (finalTranscript) {
-          setText(prev => (prev ? prev + ' ' : '') + finalTranscript);
-        }
+        if (finalTranscript) setText(prev => (prev ? prev + ' ' : '') + finalTranscript);
       };
-
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
+      recognition.onend = () => setIsListening(false);
       recognitionRef.current = recognition;
     }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
   }, [isOpen]);
 
   const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert("Reconhecimento de voz não suportado neste navegador.");
-      return;
-    }
-
+    if (!recognitionRef.current) return alert("Não suportado");
     if (isListening) {
       recognitionRef.current.stop();
     } else {
       setIsListening(true);
-      try {
-        recognitionRef.current.start();
-      } catch (e) {
-        console.error(e);
-        setIsListening(false);
-      }
+      recognitionRef.current.start();
     }
   };
 
   if (!isOpen) return null;
 
-  const isCompleted = type === TaskStatus.COMPLETED;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-          <h3 className="text-xl font-bold text-gray-900">
-            {isCompleted ? 'Finalizar Atividade' : 'Reprogramar Atividade'}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
+        <div className="p-8 flex justify-between items-center border-b border-gray-100">
+          <h3 className="text-xl font-black text-gray-900 tracking-tight">
+            {type === TaskStatus.COMPLETED ? 'Finalizar Atividade' : 'Reprogramação'}
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-            <XMarkIcon className="h-6 w-6" />
-          </button>
+          <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400"><XMarkIcon className="h-5 w-5" /></button>
         </div>
 
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-500">
-            {isCompleted 
-              ? 'Deseja adicionar alguma observação sobre a conclusão?' 
-              : 'Informe o motivo da reprogramação ou nova data prevista.'}
-          </p>
-          
+        <div className="p-8 space-y-6">
           <div className="relative">
             <textarea
-              className="w-full h-32 p-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none resize-none text-gray-700"
-              placeholder="Digite aqui ou use o microfone..."
+              className="w-full h-40 p-6 bg-gray-50 border border-gray-100 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-50 transition-all resize-none text-gray-700 font-medium"
+              placeholder="Descreva as observações aqui..."
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
-            <button
-              type="button"
-              onClick={toggleListening}
-              className={`absolute bottom-3 right-3 p-2 rounded-full transition-all shadow-lg ${
-                isListening 
-                  ? 'bg-red-500 text-white animate-pulse' 
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
-              }`}
-              title={isListening ? 'Parar Gravação' : 'Usar Microfone'}
-            >
-              <MicrophoneIcon className="h-5 w-5" />
-            </button>
+            
+            <div className="absolute bottom-4 right-4 flex items-center gap-4">
+              {isListening && (
+                <div className="flex gap-1 h-4 items-center">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <div key={i} className="w-1 bg-red-500 rounded-full animate-bounce" style={{ height: `${Math.random() * 100}%`, animationDelay: `${i * 0.1}s` }}></div>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`p-4 rounded-full shadow-xl transition-all ${isListening ? 'bg-red-500 text-white scale-110' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+              >
+                <MicrophoneIcon className="h-6 w-6" />
+              </button>
+            </div>
           </div>
           
-          {isListening && (
-            <div className="flex items-center gap-2 text-xs text-red-500 font-medium animate-pulse">
-              <span className="h-2 w-2 bg-red-500 rounded-full"></span>
-              Ouvindo sua voz...
-            </div>
-          )}
+          {isListening && <p className="text-[10px] font-black text-red-500 uppercase tracking-widest text-center animate-pulse">Gravando áudio em tempo real...</p>}
         </div>
 
-        <div className="p-6 bg-gray-50 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => onSubmit(text)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-white transition-all shadow-md active:scale-95 ${
-              isCompleted ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-500 hover:bg-amber-600'
-            }`}
-          >
-            <CheckIcon className="h-5 w-5" />
-            Confirmar
+        <div className="p-8 bg-gray-50/50 flex gap-4">
+          <button onClick={onClose} className="flex-1 px-6 py-4 bg-white border border-gray-200 text-gray-500 rounded-2xl font-bold hover:bg-gray-100 transition-all">Cancelar</button>
+          <button onClick={() => onSubmit(text)} className="flex-1 px-6 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+            <CheckIcon className="h-5 w-5" /> Confirmar
           </button>
         </div>
       </div>

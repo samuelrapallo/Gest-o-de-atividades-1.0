@@ -13,18 +13,12 @@ export interface Task {
   date: string;
   status: TaskStatus;
   observations: string;
-  lastUpdateAt?: number;
+  updatedBy?: string;
+  updatedAt?: number;
 }
 
 export interface DashboardStats {
   name: string;
   value: number;
   color: string;
-}
-
-export interface PerformerStats {
-  performer: string;
-  completed: number;
-  pending: number;
-  rescheduled: number;
 }
