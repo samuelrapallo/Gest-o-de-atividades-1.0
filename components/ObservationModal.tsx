@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { MicrophoneIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/solid';
-import { TaskStatus } from '../types.ts';
+import { TaskStatus } from '../types';
 
 interface ObservationModalProps {
   isOpen: boolean;
@@ -16,6 +16,8 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
@@ -24,13 +26,17 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
       recognition.lang = 'pt-BR';
 
       recognition.onresult = (event: any) => {
-        let interimTranscript = '';
+        if (!event || !event.results) return;
+        
+        let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            setText(prev => (prev ? prev + ' ' : '') + event.results[i][0].transcript);
-          } else {
-            interimTranscript += event.results[i][0].transcript;
+          const result = event.results[i];
+          if (result && result.isFinal) {
+            finalTranscript += result[0].transcript;
           }
+        }
+        if (finalTranscript) {
+          setText(prev => (prev ? prev + ' ' : '') + finalTranscript);
         }
       };
 
@@ -45,15 +51,26 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
 
       recognitionRef.current = recognition;
     }
-  }, []);
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [isOpen]);
 
   const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert("Reconhecimento de voz não suportado neste navegador.");
+      return;
+    }
+
     if (isListening) {
-      recognitionRef.current?.stop();
+      recognitionRef.current.stop();
     } else {
       setIsListening(true);
       try {
-        recognitionRef.current?.start();
+        recognitionRef.current.start();
       } catch (e) {
         console.error(e);
         setIsListening(false);
