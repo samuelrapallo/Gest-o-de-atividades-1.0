@@ -33,5 +33,15 @@ export const api = {
     );
     await this.saveTasks(newTasks);
     return newTasks;
+  },
+
+  // Remove todos os dados
+  async deleteAllTasks(): Promise<void> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        localStorage.removeItem(STORAGE_KEY);
+        resolve();
+      }, 400);
+    });
   }
 };
