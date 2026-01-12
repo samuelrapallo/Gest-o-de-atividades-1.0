@@ -76,8 +76,8 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
         <div className="p-8 flex justify-between items-center border-b border-gray-100">
-          <h3 className="text-xl font-black text-gray-900 tracking-tight">
-            {type === TaskStatus.COMPLETED ? 'Finalizar Atividade' : 'Reprogramação'}
+          <h3 className="text-xl font-black text-gray-900 tracking-tight uppercase">
+            {type === TaskStatus.COMPLETED ? 'Concluir Atividade' : 'Reprogramar Atividade'}
           </h3>
           <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400"><XMarkIcon className="h-5 w-5" /></button>
         </div>
@@ -85,8 +85,8 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
         <div className="p-8 space-y-6">
           <div className="relative">
             <textarea
-              className="w-full h-40 p-6 bg-gray-50 border border-gray-100 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-50 transition-all resize-none text-gray-700 font-medium"
-              placeholder="Descreva as observações aqui..."
+              className="w-full h-40 p-6 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 transition-all resize-none text-gray-700 font-medium text-sm"
+              placeholder="Descreva as observações ou clique no microfone..."
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
@@ -109,12 +109,12 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
             </div>
           </div>
           
-          {isListening && <p className="text-[10px] font-black text-red-500 uppercase tracking-widest text-center animate-pulse">Gravando áudio...</p>}
+          {isListening && <p className="text-[9px] font-black text-red-500 uppercase tracking-widest text-center animate-pulse">Escutando áudio...</p>}
         </div>
 
         <div className="p-8 bg-gray-50/50 flex gap-4">
-          <button onClick={onClose} className="flex-1 px-6 py-4 bg-white border border-gray-200 text-gray-500 rounded-2xl font-bold hover:bg-gray-100 transition-all">Cancelar</button>
-          <button onClick={() => onSubmit(text)} className="flex-1 px-6 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
+          <button onClick={onClose} className="flex-1 px-6 py-4 bg-white border border-gray-200 text-gray-500 rounded-xl font-bold hover:bg-gray-100 transition-all text-xs uppercase">Cancelar</button>
+          <button onClick={() => onSubmit(text)} className="flex-1 px-6 py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 text-xs uppercase">
             <CheckIcon className="h-5 w-5" /> Confirmar
           </button>
         </div>
