@@ -1,5 +1,5 @@
 {
-  "name": "Gestor Executivo de Atividades",
+  "name": "Gestor de atividades",
   "description": "Uma plataforma intuitiva para gestão de planilhas executivas, permitindo acompanhamento de atividades, registro de observações por voz e análise de produtividade através de dashboards interativos.",
   "requestFramePermissions": [
     "microphone"
