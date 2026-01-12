@@ -17,31 +17,56 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
 
   useEffect(() => {
     if (!isOpen) return;
+    
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'pt-BR';
-      recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
-        }
-        if (finalTranscript) setText(prev => (prev ? prev + ' ' : '') + finalTranscript);
-      };
-      recognition.onend = () => setIsListening(false);
-      recognitionRef.current = recognition;
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'pt-BR';
+        
+        recognition.onresult = (event: any) => {
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+          }
+          if (finalTranscript) setText(prev => (prev ? prev + ' ' : '') + finalTranscript);
+        };
+        
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = (event: any) => {
+          console.warn("Speech recognition error:", event.error);
+          setIsListening(false);
+        };
+        
+        recognitionRef.current = recognition;
+      } catch (e) {
+        console.error("Falha ao inicializar SpeechRecognition:", e);
+      }
     }
+
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e) {}
+      }
+    };
   }, [isOpen]);
 
   const toggleListening = () => {
-    if (!recognitionRef.current) return alert("Não suportado");
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      setIsListening(true);
-      recognitionRef.current.start();
+    if (!recognitionRef.current) return alert("Seu navegador não suporta reconhecimento de voz.");
+    
+    try {
+      if (isListening) {
+        recognitionRef.current.stop();
+      } else {
+        setIsListening(true);
+        recognitionRef.current.start();
+      }
+    } catch (e) {
+      console.error("Erro ao alternar reconhecimento:", e);
+      setIsListening(false);
+      alert("Erro ao acessar o microfone. Verifique as permissões de áudio.");
     }
   };
 
@@ -70,7 +95,7 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
               {isListening && (
                 <div className="flex gap-1 h-4 items-center">
                   {[1, 2, 3, 4, 5].map(i => (
-                    <div key={i} className="w-1 bg-red-500 rounded-full animate-bounce" style={{ height: `${Math.random() * 100}%`, animationDelay: `${i * 0.1}s` }}></div>
+                    <div key={i} className="w-1 bg-red-500 rounded-full animate-bounce" style={{ height: `${Math.random() * 80 + 20}%`, animationDelay: `${i * 0.1}s` }}></div>
                   ))}
                 </div>
               )}
@@ -84,7 +109,7 @@ const ObservationModal: React.FC<ObservationModalProps> = ({ isOpen, type, onClo
             </div>
           </div>
           
-          {isListening && <p className="text-[10px] font-black text-red-500 uppercase tracking-widest text-center animate-pulse">Gravando áudio em tempo real...</p>}
+          {isListening && <p className="text-[10px] font-black text-red-500 uppercase tracking-widest text-center animate-pulse">Gravando áudio...</p>}
         </div>
 
         <div className="p-8 bg-gray-50/50 flex gap-4">

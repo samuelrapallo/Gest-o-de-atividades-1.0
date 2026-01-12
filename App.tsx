@@ -5,18 +5,15 @@ import {
   TrashIcon, 
   CheckCircleIcon, 
   MagnifyingGlassIcon, 
-  ArrowDownTrayIcon, 
   ShareIcon,
-  LockClosedIcon,
-  UserCircleIcon,
   ArrowPathIcon,
   XMarkIcon,
   ClipboardDocumentListIcon,
-  ArrowTrendingUpIcon,
-  ClockIcon,
+  CloudArrowUpIcon,
+  WifiIcon,
+  UserGroupIcon,
   CalendarDaysIcon,
-  CloudIcon,
-  LinkIcon
+  HashtagIcon
 } from '@heroicons/react/24/outline';
 import { 
   PieChart, 
@@ -29,128 +26,62 @@ import { Task, TaskStatus } from './types';
 import { api } from './api';
 import ObservationModal from './components/ObservationModal';
 
-const generateUUID = () => crypto.randomUUID?.() || Math.random().toString(36).substring(2, 15);
-
-// Função para compactar dados na URL (Base64 Safe)
-const encodeDataToURL = (data: Task[]) => {
-  try {
-    const jsonString = JSON.stringify(data);
-    // Usando btoa com escape para suportar caracteres especiais/acentos
-    return btoa(unescape(encodeURIComponent(jsonString)));
-  } catch (e) {
-    return "";
-  }
-};
-
-// Função para descompactar dados da URL
-const decodeDataFromURL = (hash: string): Task[] => {
-  try {
-    const base64 = hash.startsWith('#') ? hash.substring(1) : hash;
-    if (!base64) return [];
-    const jsonString = decodeURIComponent(escape(atob(base64)));
-    return JSON.parse(jsonString);
-  } catch (e) {
-    return [];
-  }
-};
-
-// Exportador Excel com Estilização de Cores
-const exportTasksToExcel = (tasks: Task[]) => {
-  const table = document.createElement('table');
-  const header = `
-    <thead>
-      <tr style="background-color: #1e293b; color: #ffffff; font-weight: bold;">
-        <th style="border: 1px solid #ddd; padding: 8px;">Atividade</th>
-        <th style="border: 1px solid #ddd; padding: 8px;">N. Ordem</th>
-        <th style="border: 1px solid #ddd; padding: 8px;">Executante</th>
-        <th style="border: 1px solid #ddd; padding: 8px;">Data</th>
-        <th style="border: 1px solid #ddd; padding: 8px;">Status</th>
-        <th style="border: 1px solid #ddd; padding: 8px;">Observacoes</th>
-      </tr>
-    </thead>
-  `;
-  
-  const rows = tasks.map(t => {
-    let bgColor = '#ffffff';
-    let textColor = '#000000';
-    
-    if (t.status === TaskStatus.COMPLETED) {
-      bgColor = '#c6efce'; // Verde Suave Excel
-      textColor = '#006100';
-    } else if (t.status === TaskStatus.RESCHEDULED) {
-      bgColor = '#ffeb9c'; // Laranja Suave Excel
-      textColor = '#9c5600';
-    }
-    
-    return `
-      <tr style="background-color: ${bgColor}; color: ${textColor};">
-        <td style="border: 1px solid #ddd; padding: 8px;">${t.activity}</td>
-        <td style="border: 1px solid #ddd; padding: 8px;">${t.orderNumber}</td>
-        <td style="border: 1px solid #ddd; padding: 8px;">${t.performer}</td>
-        <td style="border: 1px solid #ddd; padding: 8px;">${t.date}</td>
-        <td style="border: 1px solid #ddd; padding: 8px;">${t.status}</td>
-        <td style="border: 1px solid #ddd; padding: 8px;">${t.observations || ''}</td>
-      </tr>
-    `;
-  }).join('');
-
-  const html = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head><meta charset="utf-8"/></head>
-      <body><table>${header}<tbody>${rows}</tbody></table></body>
-    </html>
-  `;
-
-  const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `Relatorio_Executivo_${new Date().toLocaleDateString().replace(/\//g, '-')}.xls`;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
 const App: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [lastSync, setLastSync] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [filter, setFilter] = useState('');
   const [selectedPerformer, setSelectedPerformer] = useState('Todos');
   const [activeModal, setActiveModal] = useState<{ taskId: string, type: TaskStatus } | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const [currentUser, setCurrentUser] = useState<string | null>(localStorage.getItem('user_name'));
 
-  // Sincronização URL -> State (Ao carregar ou mudar link)
-  useEffect(() => {
-    const loadData = () => {
-      const hashData = decodeDataFromURL(window.location.hash);
-      if (hashData.length > 0) {
-        setTasks(hashData);
-        setLoading(false);
-      } else {
-        // Se não tem na URL, tenta o banco local "cloud mock"
-        api.fetchTasks().then(localData => {
-          setTasks(localData);
-          setLoading(false);
-        });
+  const syncWithCloud = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
+    setIsSyncing(true);
+    try {
+      const { tasks: cloudTasks, updatedAt } = await api.fetchTasks();
+      if (updatedAt > lastSync || !isSilent) {
+        setTasks(cloudTasks);
+        setLastSync(updatedAt);
       }
-    };
-    loadData();
-    window.addEventListener('hashchange', loadData);
-    return () => window.removeEventListener('hashchange', loadData);
-  }, []);
-
-  // Sincronização State -> URL + Local (Toda vez que as tarefas mudam)
-  useEffect(() => {
-    if (tasks.length > 0) {
-      const hash = encodeDataToURL(tasks);
-      window.history.replaceState(null, "", `#${hash}`);
-      api.saveTasks(tasks); // Salva no backup local também
+    } catch (e) {
+      console.error("Erro na sincronização:", e);
+    } finally {
+      setLoading(false);
+      setTimeout(() => setIsSyncing(false), 1000);
     }
-  }, [tasks]);
+  }, [lastSync]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    syncWithCloud();
+    api.onExternalChange(() => syncWithCloud(true));
+    const interval = setInterval(() => syncWithCloud(true), 5000);
+    return () => clearInterval(interval);
+  }, [syncWithCloud]);
+
+  const persistChanges = async (newTasks: Task[]) => {
+    setIsSyncing(true);
+    const newTimestamp = await api.saveTasks(newTasks);
+    setTasks(newTasks);
+    setLastSync(newTimestamp);
+    setTimeout(() => setIsSyncing(false), 800);
+  };
+
+  const clearApp = async () => {
+    if(confirm("Deseja apagar a planilha global e limpar para todos os usuários conectados?")) {
+      setIsSyncing(true);
+      await api.clearCloud();
+      setTasks([]);
+      setLastSync(Date.now());
+      setNotification({ message: 'Planilha apagada globalmente!', type: 'success' });
+      setTimeout(() => setIsSyncing(false), 800);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!isAdmin) return;
     const file = e.target.files?.[0];
     if (!file) return;
@@ -161,274 +92,336 @@ const App: React.FC = () => {
         const text = event.target?.result as string;
         const lines = text.split(/\r?\n/);
         const newTasks: Task[] = [];
-        const delimiter = lines[0].includes(';') ? ';' : ',';
+        const delimiter = lines[0]?.includes(';') ? ';' : ',';
 
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
           const parts = line.split(delimiter).map(s => s.trim().replace(/^"|"$/g, ''));
-          const [activity, orderNumber, date, performer] = parts;
-          
-          if (activity && performer) {
+          if (parts[0]) {
             newTasks.push({
-              id: generateUUID(),
-              activity,
-              orderNumber: orderNumber || 'N/A',
-              performer,
-              date: date || new Date().toLocaleDateString(),
+              id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              activity: parts[0],
+              orderNumber: parts[1] || 'N/A',
+              date: parts[2] || new Date().toLocaleDateString(), // Ordem: 0=Ativ, 1=Ordem, 2=Data
+              performer: parts[3] || 'Executante', // Ordem: 3=Executante
               status: TaskStatus.PENDING,
               observations: ''
             });
           }
         }
-        setTasks(newTasks);
-        setNotification({ message: 'Planilha importada com sucesso!', type: 'success' });
+        await persistChanges(newTasks);
+        setNotification({ message: 'Nova planilha carregada e sincronizada!', type: 'success' });
       } catch (err) {
-        setNotification({ message: 'Erro ao ler arquivo CSV.', type: 'error' });
+        setNotification({ message: 'Erro no arquivo CSV.', type: 'error' });
       }
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
-  const clearAllData = async () => {
-    if (!isAdmin) return;
-    if (confirm("Deseja APAGAR todos os dados da planilha atual?")) {
-      setTasks([]);
-      await api.deleteAllTasks();
-      window.history.replaceState(null, "", window.location.pathname);
-      setNotification({ message: 'Planilha excluída.', type: 'success' });
-    }
-  };
-
-  const updateTaskStatus = async (id: string, status: TaskStatus, observations: string) => {
-    const updated = tasks.map(t => 
-      t.id === id ? { ...t, status, observations, updatedBy: currentUser || 'Equipe', updatedAt: Date.now() } : t
-    );
-    setTasks(updated);
+  const updateStatus = async (id: string, status: TaskStatus, obs: string) => {
+    const newTasks = tasks.map(t => t.id === id ? { ...t, status, observations: obs } : t);
+    await persistChanges(newTasks);
     setActiveModal(null);
-    setNotification({ message: 'Status atualizado no link!', type: 'success' });
   };
 
-  const resetTask = (id: string) => {
-    const updated = tasks.map(t => t.id === id ? { ...t, status: TaskStatus.PENDING, observations: '' } : t);
-    setTasks(updated);
+  const undoStatus = async (id: string) => {
+    const newTasks = tasks.map(t => t.id === id ? { ...t, status: TaskStatus.PENDING, observations: '' } : t);
+    await persistChanges(newTasks);
   };
 
-  const stats = useMemo(() => {
+  const globalStats = useMemo(() => {
     const total = tasks.length;
     const completed = tasks.filter(t => t.status === TaskStatus.COMPLETED).length;
     const pending = tasks.filter(t => t.status === TaskStatus.PENDING).length;
     const rescheduled = tasks.filter(t => t.status === TaskStatus.RESCHEDULED).length;
     return {
       total, completed, pending, rescheduled,
-      rate: total > 0 ? ((completed / total) * 100).toFixed(1) : "0.0"
+      rate: total > 0 ? ((completed / total) * 100).toFixed(0) : "0",
+      chartData: [
+        { name: 'Concluído', value: completed, color: '#10B981' },
+        { name: 'Pendente', value: pending, color: '#3B82F6' },
+        { name: 'Reprogramado', value: rescheduled, color: '#F59E0B' }
+      ].filter(d => d.value > 0)
     };
+  }, [tasks]);
+
+  const performancePerPerformer = useMemo(() => {
+    const performers = Array.from(new Set(tasks.map(t => t.performer)));
+    return performers.map(p => {
+      const pTasks = tasks.filter(t => t.performer === p);
+      const done = pTasks.filter(t => t.status === TaskStatus.COMPLETED).length;
+      return {
+        name: p,
+        total: pTasks.length,
+        done,
+        percent: pTasks.length > 0 ? Math.round((done / pTasks.length) * 100) : 0
+      };
+    }).sort((a, b) => b.percent - a.percent);
   }, [tasks]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
-      const search = filter.toLowerCase();
-      return (t.activity.toLowerCase().includes(search) || t.performer.toLowerCase().includes(search)) &&
-             (selectedPerformer === 'Todos' || t.performer === selectedPerformer);
+      const matchesSearch = t.activity.toLowerCase().includes(filter.toLowerCase()) || 
+                           t.performer.toLowerCase().includes(filter.toLowerCase()) ||
+                           t.orderNumber.toLowerCase().includes(filter.toLowerCase());
+      const matchesPerformer = selectedPerformer === 'Todos' || t.performer === selectedPerformer;
+      return matchesSearch && matchesPerformer;
     });
   }, [tasks, filter, selectedPerformer]);
 
-  const chartData = [
-    { name: 'Concluídas', value: stats.completed, color: '#10B981' },
-    { name: 'Pendentes', value: stats.pending, color: '#3B82F6' },
-    { name: 'Reprogramadas', value: stats.rescheduled, color: '#F59E0B' }
-  ].filter(d => d.value > 0);
+  const performersList = useMemo(() => Array.from(new Set(tasks.map(t => t.performer))), [tasks]);
 
-  const copyShareLink = () => {
-    navigator.clipboard.writeText(window.location.href).then(() => {
-      setNotification({ message: 'Link com dados atuais copiado!', type: 'success' });
-    });
-  };
-
-  if (loading) return <div className="h-screen flex items-center justify-center bg-gray-50"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (loading) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-white">
+      <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p className="text-sm font-black text-indigo-600 uppercase tracking-widest animate-pulse">Sincronizando Dados...</p>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] pb-24 font-sans text-gray-900">
-      {notification && (
-        <div className="fixed top-6 right-6 z-[100] flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl bg-white border border-gray-100 animate-in slide-in-from-right duration-300">
-          <CheckCircleIcon className="h-5 w-5 text-green-500" />
-          <span className="font-bold text-sm">{notification.message}</span>
-          <button onClick={() => setNotification(null)} className="text-gray-300"><XMarkIcon className="h-4 w-4" /></button>
-        </div>
-      )}
-
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-40 px-6 py-4 shadow-sm">
+    <div className="min-h-screen bg-[#F8F9FD] text-slate-900 pb-20">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-6 py-4 shadow-sm">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg shadow-indigo-100"><ClipboardDocumentListIcon className="h-6 w-6 text-white" /></div>
+            <div className="bg-indigo-600 p-2.5 rounded-2xl text-white shadow-lg shadow-indigo-100">
+              <ClipboardDocumentListIcon className="h-6 w-6" />
+            </div>
             <div>
-              <h1 className="text-lg font-black tracking-tight">Gestor Executivo</h1>
-              <div className="flex items-center gap-1 text-[9px] font-bold text-indigo-500 uppercase tracking-widest">
-                <LinkIcon className="h-3 w-3" /> Link Sincronizado
+              <h1 className="text-xl font-black tracking-tight leading-none text-slate-800">Gestor de Atividades</h1>
+              <div className="flex items-center gap-2 mt-1">
+                <WifiIcon className={`h-3 w-3 ${isSyncing ? 'text-amber-500 animate-pulse' : 'text-emerald-500'}`} />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                  {isSyncing ? 'Atualizando Nuvem...' : 'Dados Sincronizados'}
+                </span>
               </div>
             </div>
           </div>
-          
-          <div className="flex gap-2 items-center">
+
+          <div className="flex items-center gap-4">
             {isAdmin ? (
-              <div className="flex items-center gap-2">
-                <button onClick={clearAllData} title="Limpar tudo" className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors">
+              <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                <button 
+                  onClick={clearApp} 
+                  className="p-2.5 text-red-500 hover:bg-white hover:shadow-sm rounded-xl transition-all"
+                  title="Apagar Planilha Atual"
+                >
                   <TrashIcon className="h-5 w-5" />
                 </button>
-                <button onClick={() => exportTasksToExcel(tasks)} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
-                  <ArrowDownTrayIcon className="h-4 w-4" /> Exportar Excel
-                </button>
-                <button onClick={() => setIsAdmin(false)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold">Gestor ON</button>
+                <button onClick={() => setIsAdmin(false)} className="px-5 py-2 bg-white shadow-sm border border-slate-200 text-slate-700 rounded-xl text-xs font-black">Sair do Admin</button>
               </div>
             ) : (
-              <button onClick={() => setShowLogin(true)} className="px-5 py-2.5 bg-white border border-gray-200 rounded-xl text-xs font-bold">Login Gestor</button>
+              <button onClick={() => setShowLogin(true)} className="px-6 py-3 bg-indigo-50 text-indigo-600 rounded-2xl text-xs font-black hover:bg-indigo-100 transition-all">Acesso Gestor</button>
             )}
-            <button onClick={copyShareLink} className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100" title="Compartilhar">
-              <ShareIcon className="h-5 w-5" />
-            </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-10">
         {tasks.length > 0 ? (
-          <div className="space-y-10">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-              {[
-                { label: 'Total', val: stats.total, color: 'text-gray-400' },
-                { label: 'Pendentes', val: stats.pending, color: 'text-blue-500' },
-                { label: 'Concluídas', val: stats.completed, color: 'text-green-500' },
-                { label: 'Reprogramadas', val: stats.rescheduled, color: 'text-orange-500' }
-              ].map(card => (
-                <div key={card.label} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm transition-transform hover:scale-[1.01]">
-                   <div className="text-3xl font-black text-gray-900 mb-0.5">{card.val}</div>
-                   <div className={`text-[9px] font-black uppercase tracking-widest ${card.color}`}>{card.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Dash & Chart */}
-            <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-8 lg:p-12 flex flex-col lg:flex-row items-center gap-12">
-                <div className="w-full lg:w-1/2 h-[350px] relative flex items-center justify-center">
-                  <div className="absolute flex flex-col items-center justify-center pointer-events-none">
-                     <span className="text-5xl font-black text-gray-900">{stats.rate}%</span>
-                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Eficiência</span>
-                  </div>
-                  <ResponsiveContainer width="100%" height="100%">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* SIDEBAR DASHBOARDS */}
+            <div className="lg:col-span-4 space-y-8">
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-8 flex flex-col items-center">
+                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-6 self-start">Progresso Geral</h3>
+                <div className="h-64 w-full relative mb-6">
+                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-5xl font-black text-slate-800">{globalStats.rate}%</span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Conclusão</span>
+                   </div>
+                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={chartData} cx="50%" cy="50%" innerRadius={100} outerRadius={155} dataKey="value" strokeWidth={0} label={({percent}) => `${(percent * 100).toFixed(0)}%`}>
-                        {chartData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
+                      <Pie data={globalStats.chartData} innerRadius={80} outerRadius={110} paddingAngle={5} dataKey="value" stroke="none">
+                        {globalStats.chartData.map((entry, index) => <Cell key={index} fill={entry.color} cornerRadius={8} />)}
                       </Pie>
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="w-full lg:w-1/2 space-y-4">
-                   <h3 className="text-xl font-black tracking-tight mb-6">Visão Geral do Dia</h3>
-                   {[
-                     { label: 'Concluídas', val: stats.completed, color: 'bg-green-500', bg: 'bg-green-50/50', text: 'text-green-700' },
-                     { label: 'Pendentes', val: stats.pending, color: 'bg-blue-500', bg: 'bg-blue-50/50', text: 'text-blue-700' },
-                     { label: 'Reprogramadas', val: stats.rescheduled, color: 'bg-orange-500', bg: 'bg-orange-50/50', text: 'text-orange-700' }
-                   ].map(l => (
-                     <div key={l.label} className={`${l.bg} rounded-2xl px-8 py-5 flex items-center justify-between`}>
-                        <div className="flex items-center gap-3 font-bold text-gray-700">
-                          <div className={`h-2.5 w-2.5 rounded-full ${l.color}`}></div>
-                          {l.label}
-                        </div>
-                        <span className={`text-3xl font-black ${l.text}`}>{l.val}</span>
-                     </div>
-                   ))}
+                <div className="w-full space-y-3">
+                   <div className="flex justify-between items-center text-xs font-bold text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                     <span>Aguardando</span><span className="text-blue-600 font-black">{globalStats.pending}</span>
+                   </div>
+                   <div className="flex justify-between items-center text-xs font-bold text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                     <span>Reprogramadas</span><span className="text-amber-600 font-black">{globalStats.rescheduled}</span>
+                   </div>
                 </div>
+              </div>
+
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-8">
+                <div className="flex items-center gap-2 mb-6">
+                  <UserGroupIcon className="h-5 w-5 text-indigo-500" />
+                  <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Ranking Performance</h3>
+                </div>
+                <div className="space-y-6">
+                  {performancePerPerformer.map(p => (
+                    <div key={p.name} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black text-slate-700 uppercase tracking-tighter truncate max-w-[150px]">{p.name}</span>
+                        <span className="text-xs font-black text-indigo-600">{p.percent}%</span>
+                      </div>
+                      <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out" 
+                          style={{ width: `${p.percent}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{p.done} concluídas de {p.total}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Table Area */}
-            <div className="space-y-6">
-               <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-300 absolute left-4 top-1/2 -translate-y-1/2" />
-                    <input type="text" placeholder="Filtrar por tarefa ou nome..." className="w-full pl-12 pr-6 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm outline-none font-medium" value={filter} onChange={e => setFilter(e.target.value)} />
-                  </div>
-                  <select className="px-6 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm font-bold text-sm outline-none" value={selectedPerformer} onChange={e => setSelectedPerformer(e.target.value)}>
-                    <option value="Todos">Todos Executantes</option>
-                    {Array.from(new Set(tasks.map(t => t.performer))).map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-               </div>
+            {/* LISTA DE TAREFAS */}
+            <div className="lg:col-span-8 space-y-6">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="relative flex-1">
+                  <MagnifyingGlassIcon className="h-5 w-5 absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
+                  <input 
+                    type="text" 
+                    placeholder="Filtrar por atividade, ordem, data ou executante..." 
+                    className="w-full pl-14 pr-8 py-4.5 bg-white border border-slate-200 rounded-2xl shadow-sm outline-none font-semibold focus:ring-4 ring-indigo-500/5 transition-all" 
+                    value={filter} 
+                    onChange={e => setFilter(e.target.value)} 
+                  />
+                </div>
+                <select 
+                  className="px-6 py-4.5 bg-white border border-slate-200 rounded-2xl shadow-sm font-black text-xs outline-none cursor-pointer text-slate-600"
+                  value={selectedPerformer} 
+                  onChange={e => setSelectedPerformer(e.target.value)}
+                >
+                  <option value="Todos">Global</option>
+                  {performersList.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
 
-               <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden overflow-x-auto">
-                  <table className="w-full text-left min-w-[700px]">
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
                     <thead>
-                      <tr className="bg-gray-50/50 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100">
-                        <th className="px-8 py-6">Status / Atividade</th>
+                      <tr className="bg-slate-50/50 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 border-b border-slate-100">
+                        <th className="px-8 py-6">Atividade</th>
+                        <th className="px-8 py-6">Ordem</th>
+                        <th className="px-8 py-6">Data</th>
                         <th className="px-8 py-6">Executante</th>
-                        <th className="px-8 py-6 text-right">Ação</th>
+                        <th className="px-8 py-6 text-right">Controle</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-slate-100">
                       {filteredTasks.map(task => (
-                        <tr key={task.id} className="group hover:bg-gray-50/20">
-                          <td className="px-8 py-6">
+                        <tr key={task.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-7 min-w-[200px]">
                             <div className="flex items-center gap-3 mb-1.5">
-                               <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${
-                                 task.status === TaskStatus.COMPLETED ? 'bg-green-100 text-green-700' :
-                                 task.status === TaskStatus.RESCHEDULED ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                               <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
+                                 task.status === TaskStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' :
+                                 task.status === TaskStatus.RESCHEDULED ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
                                }`}>{task.status}</span>
-                               <div className="text-sm font-bold text-gray-800 tracking-tight">{task.activity}</div>
+                               <span className="font-bold text-slate-800">{task.activity}</span>
                             </div>
-                            {task.observations && <div className="text-[10px] text-gray-400 font-medium bg-gray-50 p-2 rounded-lg inline-block">"{task.observations}" {task.updatedBy && <span className="text-indigo-400 ml-1">• {task.updatedBy}</span>}</div>}
+                            {task.observations && <div className="text-[11px] font-medium text-slate-400 italic mt-2 bg-slate-100/50 p-2 rounded-lg border border-slate-100 inline-block">"{task.observations}"</div>}
                           </td>
-                          <td className="px-8 py-6 text-sm font-black text-gray-400 uppercase tracking-tighter">{task.performer}</td>
-                          <td className="px-8 py-6 text-right">
-                             {task.status === TaskStatus.PENDING ? (
-                               <div className="flex justify-end gap-2">
-                                 <button onClick={() => setActiveModal({ taskId: task.id, type: TaskStatus.COMPLETED })} className="px-5 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-green-700 transition-all">Concluir</button>
-                                 <button onClick={() => setActiveModal({ taskId: task.id, type: TaskStatus.RESCHEDULED })} className="px-5 py-2.5 bg-orange-500 text-white rounded-xl text-[10px] font-black uppercase hover:bg-orange-600 transition-all">Reprogramar</button>
-                               </div>
-                             ) : (
-                               <button onClick={() => resetTask(task.id)} className="px-5 py-2.5 bg-white text-indigo-600 border-2 border-indigo-50 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:border-indigo-600 ml-auto transition-all">
-                                 <ArrowPathIcon className="h-4 w-4" /> Refazer
-                               </button>
-                             )}
+                          <td className="px-8 py-7">
+                            <div className="flex items-center gap-2 text-slate-500">
+                               <HashtagIcon className="h-3 w-3 opacity-30" />
+                               <span className="text-[11px] font-black uppercase">{task.orderNumber}</span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-7">
+                            <div className="flex items-center gap-2 text-slate-500">
+                               <CalendarDaysIcon className="h-4 w-4 opacity-30" />
+                               <span className="text-xs font-bold">{task.date}</span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-7">
+                            <div className="flex items-center gap-2">
+                               <div className="h-7 w-7 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-400 uppercase">{task.performer.slice(0,2)}</div>
+                               <span className="text-[11px] font-black text-slate-600 uppercase tracking-tighter">{task.performer}</span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-7 text-right">
+                            {task.status === TaskStatus.PENDING ? (
+                              <div className="flex justify-end gap-2">
+                                <button 
+                                  onClick={() => setActiveModal({ taskId: task.id, type: TaskStatus.COMPLETED })} 
+                                  className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-emerald-700 shadow-md shadow-emerald-50 transition-all active:scale-95"
+                                >
+                                  Concluir
+                                </button>
+                                <button 
+                                  onClick={() => setActiveModal({ taskId: task.id, type: TaskStatus.RESCHEDULED })} 
+                                  className="px-4 py-2.5 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase hover:bg-amber-600 shadow-md shadow-amber-50 transition-all active:scale-95"
+                                >
+                                  Adiar
+                                </button>
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={() => undoStatus(task.id)} 
+                                className="px-4 py-2.5 bg-slate-50 text-slate-400 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-50 hover:text-indigo-600 transition-all inline-flex items-center gap-2 border border-slate-100 hover:border-indigo-100"
+                              >
+                                <ArrowPathIcon className="h-4 w-4" /> Corrigir
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-               </div>
+                </div>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-40 bg-white rounded-[4rem] border-2 border-dashed border-gray-100 text-center px-6">
-             <div className="bg-indigo-50 p-10 rounded-[3rem] mb-10"><ClipboardDocumentListIcon className="h-20 w-20 text-indigo-200" /></div>
-             <h2 className="text-4xl font-black text-gray-900 mb-4 tracking-tighter">Nenhum Dado Carregado</h2>
-             <p className="text-gray-400 font-medium mb-12">Importe uma planilha CSV ou acesse um link compartilhado.</p>
+          <div className="py-48 bg-white rounded-[4rem] border-2 border-dashed border-slate-200 text-center px-10">
+             <div className="bg-indigo-50 p-12 rounded-[4rem] w-40 h-40 mx-auto mb-12 flex items-center justify-center animate-pulse">
+                <CloudArrowUpIcon className="h-20 w-20 text-indigo-200" />
+             </div>
+             <h2 className="text-4xl font-black text-slate-900 mb-6 tracking-tight">Vazio e Sincronizado</h2>
+             <p className="text-slate-400 font-medium text-lg mb-14 max-w-md mx-auto">Importe uma planilha CSV seguindo a ordem: Atividade, Ordem, Data, Executante.</p>
              {isAdmin ? (
-               <label className="bg-indigo-600 text-white px-16 py-6 rounded-[2.5rem] font-black text-xl cursor-pointer shadow-2xl hover:bg-indigo-700 transition-all flex items-center gap-4">
+               <label className="bg-indigo-600 text-white px-16 py-6 rounded-[2.5rem] font-black text-xl cursor-pointer shadow-2xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-105 inline-flex items-center gap-4 transition-all active:scale-95">
                  <PlusIcon className="h-7 w-7" /> Importar CSV
                  <input type="file" className="hidden" accept=".csv" onChange={handleFileUpload} />
                </label>
              ) : (
-               <button onClick={() => setShowLogin(true)} className="bg-white border-2 border-gray-100 px-14 py-6 rounded-[2.5rem] font-black text-gray-700 shadow-xl">Acesso Administrador</button>
+               <button onClick={() => setShowLogin(true)} className="bg-white border-2 border-slate-200 px-14 py-6 rounded-[2.5rem] font-black text-slate-700 shadow-xl hover:bg-slate-50 transition-all active:scale-95">Acesso Administrativo</button>
              )}
           </div>
         )}
       </main>
 
+      {notification && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[100] bg-slate-900 text-white rounded-[2rem] px-8 py-5 flex items-center gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-10">
+          <CheckCircleIcon className="h-6 w-6 text-emerald-400" />
+          <span className="text-sm font-bold tracking-tight">{notification.message}</span>
+          <button onClick={() => setNotification(null)} className="ml-4 p-1 hover:bg-white/10 rounded-full"><XMarkIcon className="h-4 w-4" /></button>
+        </div>
+      )}
+
       {showLogin && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-gray-900/60 backdrop-blur-xl">
-          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-sm p-12 text-center">
-             <h3 className="text-2xl font-black mb-10 tracking-tight">Login Gestor</h3>
-             <button onClick={() => {setIsAdmin(true); setShowLogin(false); setCurrentUser('Admin');}} className="w-full flex items-center justify-center gap-4 bg-white border-2 border-gray-100 py-5 rounded-[1.5rem] font-black text-gray-700 hover:border-indigo-200 transition-all">
-               <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" className="h-7 w-7" alt="G" /> Google Workspace
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-xl">
+          <div className="bg-white rounded-[4rem] shadow-2xl w-full max-w-sm p-16 text-center animate-in zoom-in-95">
+             <div className="bg-indigo-600 h-16 w-16 rounded-[1.5rem] mx-auto mb-8 flex items-center justify-center">
+               <ClipboardDocumentListIcon className="h-8 w-8 text-white" />
+             </div>
+             <h3 className="text-3xl font-black mb-10 tracking-tight text-slate-800">Acesso Gestor</h3>
+             <button onClick={() => {setIsAdmin(true); setShowLogin(false);}} className="w-full flex items-center justify-center gap-4 bg-slate-900 text-white py-5 rounded-[2rem] font-black hover:bg-slate-800 transition-all shadow-xl active:scale-95">
+               Autenticar Workspace
              </button>
-             <button onClick={() => setShowLogin(false)} className="mt-8 text-[11px] text-gray-300 font-black uppercase tracking-widest">Fechar</button>
+             <button onClick={() => setShowLogin(false)} className="mt-8 text-[11px] font-black text-slate-400 uppercase tracking-widest hover:text-indigo-600 transition-colors">Voltar</button>
           </div>
         </div>
       )}
 
       {activeModal && (
-        <ObservationModal isOpen={!!activeModal} type={activeModal.type} onClose={() => setActiveModal(null)} onSubmit={obs => updateTaskStatus(activeModal.taskId, activeModal.type, obs)} />
+        <ObservationModal 
+          isOpen={!!activeModal} 
+          type={activeModal.type} 
+          onClose={() => setActiveModal(null)} 
+          onSubmit={obs => updateStatus(activeModal.taskId, activeModal.type, obs)} 
+        />
       )}
     </div>
   );
