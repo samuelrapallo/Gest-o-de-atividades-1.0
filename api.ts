@@ -1,10 +1,9 @@
 
 import { Task } from './types';
 
-const STORAGE_PREFIX = 'gestor_executivo_ws_v4_';
-const SYNC_CHANNEL_NAME = 'gestor_executivo_sync_v4';
+const STORAGE_PREFIX = 'gestor_executivo_v5_';
+const SYNC_CHANNEL_NAME = 'gestor_executivo_sync_v5';
 
-// Função segura para obter o ID do Workspace
 const getWorkspaceId = (): string => {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -17,36 +16,27 @@ const getWorkspaceId = (): string => {
     }
     return ws;
   } catch (e) {
-    return 'default_ws';
+    return 'default';
   }
 };
 
 const WS_ID = getWorkspaceId();
 const STORAGE_KEY = `${STORAGE_PREFIX}${WS_ID}`;
 
-// Inicialização segura do BroadcastChannel
+// Canal de comunicação para abas abertas no mesmo navegador
 let broadcast: BroadcastChannel | null = null;
 try {
-  if (typeof BroadcastChannel !== 'undefined') {
-    broadcast = new BroadcastChannel(`${SYNC_CHANNEL_NAME}_${WS_ID}`);
-  }
+  broadcast = new BroadcastChannel(`${SYNC_CHANNEL_NAME}_${WS_ID}`);
 } catch (e) {
-  console.warn("BroadcastChannel não suportado ou bloqueado.");
+  console.warn("Ambiente não suporta BroadcastChannel.");
 }
 
 export const api = {
-  getWsId() {
-    return WS_ID;
-  },
-
-  getWsLink() {
-    return window.location.href;
-  },
+  getWsId() { return WS_ID; },
+  getWsLink() { return window.location.href; },
 
   notifyChange() {
-    if (broadcast) {
-      broadcast.postMessage('update');
-    }
+    if (broadcast) broadcast.postMessage('update');
   },
 
   onExternalChange(callback: () => void) {
@@ -55,7 +45,7 @@ export const api = {
         if (event.data === 'update') callback();
       };
     }
-    // Também escuta mudanças no localStorage (funciona entre abas do mesmo domínio)
+    // Sincroniza via evento de storage (mesmo domínio)
     window.addEventListener('storage', (e) => {
       if (e.key === STORAGE_KEY) callback();
     });
@@ -78,16 +68,17 @@ export const api = {
   },
 
   async saveTasks(tasks: Task[]): Promise<number> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const timestamp = Date.now();
       try {
         const data = JSON.stringify({ tasks, updatedAt: timestamp });
         localStorage.setItem(STORAGE_KEY, data);
         this.notifyChange();
+        resolve(timestamp);
       } catch (e) {
-        console.error("Erro ao salvar no localStorage:", e);
+        console.error("Erro ao salvar:", e);
+        reject(e);
       }
-      resolve(timestamp);
     });
   },
 
